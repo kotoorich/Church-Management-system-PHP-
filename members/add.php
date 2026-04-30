@@ -1,0 +1,264 @@
+<?php
+$page_title = 'Add Member';
+require_once '../includes/header.php';
+requireLogin();
+
+$errors = [];
+$success = false;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Sanitize and validate input
+    $name = sanitizeInput($_POST['name'] ?? '');
+    $email = sanitizeInput($_POST['email'] ?? '');
+    $phone = sanitizeInput($_POST['phone'] ?? '');
+    $profession = sanitizeInput($_POST['profession'] ?? '');
+    $digital_address = sanitizeInput($_POST['digital_address'] ?? '');
+    $house_address = sanitizeInput($_POST['house_address'] ?? '');
+    $membership_date = $_POST['membership_date'] ?? '';
+    $status = $_POST['status'] ?? 'active';
+    
+    // Validation
+    if (empty($name)) $errors[] = 'Name is required';
+    if (empty($email)) {
+        $errors[] = 'Email is required';
+    } elseif (!validateEmail($email)) {
+        $errors[] = 'Invalid email format';
+    }
+    if (empty($phone)) {
+        $errors[] = 'Phone is required';
+    } elseif (!validatePhone($phone)) {
+        $errors[] = 'Invalid phone format';
+    }
+    if (empty($house_address)) $errors[] = 'House address is required';
+    if (empty($membership_date)) $errors[] = 'Membership date is required';
+    
+    // Check if email already exists
+    if (empty($errors)) {
+        $email_check = $pdo->prepare("SELECT id FROM members WHERE email = ?");
+        $email_check->execute([$email]);
+        if ($email_check->fetch()) {
+            $errors[] = 'Email already exists';
+        }
+    }
+    
+    // Handle image upload
+    $image_url = null;
+    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $uploaded_file = uploadImage($_FILES['image']);
+        if ($uploaded_file) {
+            $image_url = $uploaded_file;
+        } else {
+            $errors[] = 'Failed to upload image';
+        }
+    }
+    
+    // Insert member if no errors
+    if (empty($errors)) {
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO members (name, email, phone, profession, digital_address, house_address, membership_date, status, image_url) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([$name, $email, $phone, $profession, $digital_address, $house_address, $membership_date, $status, $image_url]);
+            
+            $success = true;
+            $_SESSION['success_message'] = 'Member added successfully!';
+            header('Location: index.php');
+            exit();
+        } catch (Exception $e) {
+            $errors[] = 'Failed to add member. Please try again.';
+        }
+    }
+}
+?>
+
+<div class="space-y-6">
+    <a href="index.php" class="text-primary hover:text-primary/80 transition-colors">
+        ← Back to Members
+    </a>
+
+    <div class="max-w-2xl bg-card rounded-lg border border shadow-sm">
+        <div class="p-6 border-b border">
+            <h3>Add New Member</h3>
+        </div>
+        <div class="p-6">
+            <?php if (!empty($errors)): ?>
+                <div class="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg mb-6">
+                    <ul class="list-disc list-inside space-y-1">
+                        <?php foreach ($errors as $error): ?>
+                            <li><?php echo htmlspecialchars($error); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" enctype="multipart/form-data" class="space-y-6">
+                <!-- Profile Image Section -->
+                <div class="flex flex-col items-center space-y-4">
+                    <div class="relative">
+                        <div id="imagePreview" class="w-32 h-32 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center text-primary text-2xl font-medium border-4 border-primary/20">
+                            👤
+                        </div>
+                        <button type="button" id="removeImage" class="hidden absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-8 h-8 flex items-center justify-center hover:bg-destructive/90 transition-colors" onclick="removeImagePreview()">
+                            ×
+                        </button>
+                    </div>
+                    
+                    <div class="text-center">
+                        <label for="image" class="inline-flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 cursor-pointer transition-colors">
+                            📷 Add Photo
+                        </label>
+                        <input id="image" name="image" type="file" accept="image/*" class="hidden" onchange="previewImage(this)" />
+                        <p class="text-xs text-muted-foreground mt-2">
+                            JPG, PNG, or GIF (max 5MB)
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="name" class="block text-sm text-muted-foreground mb-1">Full Name</label>
+                        <input
+                            id="name"
+                            name="name"
+                            type="text"
+                            value="<?php echo htmlspecialchars($_POST['name'] ?? ''); ?>"
+                            required
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="email" class="block text-sm text-muted-foreground mb-1">Email</label>
+                        <input
+                            id="email"
+                            name="email"
+                            type="email"
+                            value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"
+                            required
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="phone" class="block text-sm text-muted-foreground mb-1">Phone Number</label>
+                        <input
+                            id="phone"
+                            name="phone"
+                            type="text"
+                            value="<?php echo htmlspecialchars($_POST['phone'] ?? ''); ?>"
+                            required
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        />
+                    </div>
+
+                    <div class="relative">
+                        <label for="profession" class="block text-sm text-muted-foreground mb-1">Profession/Occupation</label>
+                        <input
+                            id="profession"
+                            name="profession"
+                            type="text"
+                            value="<?php echo htmlspecialchars($_POST['profession'] ?? ''); ?>"
+                            placeholder="Start typing your profession..."
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                            list="professionList"
+                        />
+                        <datalist id="professionList">
+                            <?php foreach ($common_professions as $profession): ?>
+                                <option value="<?php echo htmlspecialchars($profession); ?>">
+                            <?php endforeach; ?>
+                        </datalist>
+                    </div>
+
+                    <div>
+                        <label for="status" class="block text-sm text-muted-foreground mb-1">Status</label>
+                        <select 
+                            id="status"
+                            name="status"
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        >
+                            <option value="active" <?php echo ($_POST['status'] ?? 'active') === 'active' ? 'selected' : ''; ?>>Active</option>
+                            <option value="inactive" <?php echo ($_POST['status'] ?? '') === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="digital_address" class="block text-sm text-muted-foreground mb-1">Digital Address (GPS)</label>
+                        <input
+                            id="digital_address"
+                            name="digital_address"
+                            type="text"
+                            value="<?php echo htmlspecialchars($_POST['digital_address'] ?? ''); ?>"
+                            placeholder="e.g., GA-123-4567"
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="house_address" class="block text-sm text-muted-foreground mb-1">House Address</label>
+                        <input
+                            id="house_address"
+                            name="house_address"
+                            type="text"
+                            value="<?php echo htmlspecialchars($_POST['house_address'] ?? ''); ?>"
+                            placeholder="e.g., House 123, Street Name"
+                            required
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="membership_date" class="block text-sm text-muted-foreground mb-1">Membership Date</label>
+                        <input
+                            id="membership_date"
+                            name="membership_date"
+                            type="date"
+                            value="<?php echo htmlspecialchars($_POST['membership_date'] ?? date('Y-m-d')); ?>"
+                            required
+                            class="w-full px-3 py-2 bg-input-background border border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
+                        />
+                    </div>
+                </div>
+
+                <div class="flex space-x-4 pt-4">
+                    <button 
+                        type="submit"
+                        class="bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+                    >
+                        Add Member
+                    </button>
+                    <a 
+                        href="index.php"
+                        class="bg-secondary text-secondary-foreground px-6 py-2 rounded-lg hover:bg-secondary/80 transition-colors"
+                    >
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function previewImage(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            const preview = document.getElementById('imagePreview');
+            preview.innerHTML = `<img src="${e.target.result}" alt="Preview" class="w-32 h-32 rounded-full object-cover border-4 border-primary/20">`;
+            document.getElementById('removeImage').classList.remove('hidden');
+        }
+        
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function removeImagePreview() {
+    document.getElementById('imagePreview').innerHTML = '👤';
+    document.getElementById('removeImage').classList.add('hidden');
+    document.getElementById('image').value = '';
+}
+</script>
+
+<?php require_once '../includes/footer.php'; ?>
